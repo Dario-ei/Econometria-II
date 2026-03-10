@@ -1,0 +1,179 @@
+---
+title: "Predicción Inflación"
+author: "Dario Guillermo Ortiz Padilla"
+format: html
+editor: visual
+---
+
+#Cargamos los Datos Iniciales
+
+```{r}
+head(Data)
+```
+
+#Packages necesarios
+
+```{r}
+library(readxl)
+library(forecast)
+library(tseries)
+library(ggplot2)
+library(dplyr)
+```
+
+
+
+#Serie de Tiempo de la Inflación
+Se crea una serie de tiempo de manera mensual, con inicio en el año de 2008, con frecuencia mensual (12 meses)
+```{r}
+inflacion_ts <- ts(
+  data = Data$Inflación,
+  frequency = 12,
+  start = c(2008,1)
+)
+
+plot(inflacion_ts, main="Inflación mensual", ylab="Inflación", xlab="Año")
+```
+
+#ARIMA de manera automática
+Este proceso nos ayuda a observar los coeficientes de la serie de tiempo de la inflación, como lo es la media móvil, criterio de akaike y sigma^2
+```{r}
+ auto.arima(inflacion_ts, seasonal = TRUE)
+
+```
+
+#Descomposición Estacional
+Nos ayuda a separar las variables de tendencia y aleatorias, asi como la estacionalidad y el ruido.
+```{r}
+autoplot(decompose(inflacion_ts))
+```
+
+
+#Aplicación de la diferenciacón
+Esto con el objetivo de que se eliminen las tendencias , y de esta manera poder aproximar la estacionariedad, esto es necesario para el modelo a desarrollar, en este caso ARIMA. Ya que los datos inflacionarios tienden a presentar tendencia. 
+```{r}
+inflacion_diff <- diff(inflacion_ts)
+
+plot(inflacion_diff)
+```
+
+
+
+
+#Prueba de raices unitarias Dicky-Fuller Test
+Se aplico esta prueba a la variable differenciada de la inflación, los resultados nos muestran un estadístico de -5.6116 con un pvalor menor de 0.01,  lo que nos permite el rechazo de la hipotesis nula de que existe la presencia de una raiz unitaria. Por lo tanto la serie presenta estacionariedad.
+```{r}
+adf.test(inflacion_diff)
+```
+
+
+
+
+#Autocorrelación y Autocorrelación Parcial del modelo
+Nos ayuda para poder identificar el órden que puede tener nuestro modelo ARIMA, ya que es el que se va a desarrollar.
+```{r}
+acf(inflacion_diff, main="ACF")
+pacf(inflacion_diff, main="PACF")
+```
+
+#Comparacion de Modelos
+En este sentido se hace la comparación, y el de menor valor es el que mejor puede ajustarse con el criterio de AIC
+```{r}
+modelo1 <- Arima(inflacion_ts, order=c(1,1,1))
+modelo2 <- Arima(inflacion_ts, order=c(2,1,1))
+modelo3 <- Arima(inflacion_ts, order=c(1,1,2))
+
+AIC(modelo1, modelo2, modelo3)
+```
+
+
+Podemos observar todas las variables reportadas en el modelo, para poder evaluar la calidad del pronóstico a realizar.
+```{r}
+summary(modelo1)
+```
+
+
+
+#Pronóstico
+Se genera el pronóstico despúes del último dato que se dispone ( en este caso Enero), el pronóstico se hace para los meses de Marzo, Abril, Mayo , Junio y Julio
+```{r}
+pronostico <- forecast(modelo1, h=5)
+
+plot(pronostico)
+pronostico
+```
+
+
+
+
+
+#Pronóstico de la inflación para los próximos 5 meses de 2026 y Gráfico del Pronóstico
+Este es el pronóstico esperado y el que se busca calcular la inflación para los próximos 5 meses, Con base en los datos históricos desde 2008.
+```{r}
+pronostico$mean[1]#Predicción para el mes de Marzo
+
+autoplot(pronostico) +
+  ggtitle("Pronóstico de Inflación en México, para los próximos 5 meses") +
+  xlab("Año") +
+  ylab("Inflación (%)") +
+  theme_minimal()
+```
+
+
+
+
+
+#Diagnóstico del modelo
+Se analizan los residuos , y efectivamente tienen un comportamiento como ruido blanco, esto nos indica que no existe autocorrelación, y que los residuos son puramente aleatorios.
+```{r}
+ggAcf(residuals(modelo1))
+checkresiduals(modelo1, lag = 12)
+```
+
+
+
+
+
+
+#Intervalos de Confianza
+A partir de los intervalos de confianza se puede observar que en los meses posteriores , aumenta el valor de los intervalos de confianza, ya que aumenta la incertidumbre de como sera l pronostico en dicho plazo.
+```{r}
+#Intervalos de confianza del pronóstico
+pronostico$lower
+pronostico$upper
+```
+
+
+
+
+
+#Análisis Estacional
+Dado que la serie es de manera mensual,  se aplico una serie estacional de 12 meses, esta transformación nos permite eliminar los patrones estacionales anuales , y poder analizar la serie en términos de variación. Podemos ver que hay un proceso estacionario débil
+```{r}
+dy12 <- diff(inflacion_ts, lag = 12)
+# Extraemos ciclo mensual
+df <- data.frame(
+  dy12 = as.numeric(dy12),
+  quarter = cycle(dy12)
+)
+
+df$quarter <- factor(df$quarter,
+                     labels = c("Q1","Q2","Q3","Q4","Q5","Q6","Q7","Q8","Q9","Q10","Q11","Q12"))
+
+boxplot(dy12 ~ quarter,
+        data = df,
+        col = "green",
+        main = "Diferencia anual (lag 12) por meses",
+        ylab = expression(Delta[12]~y[t]))
+```
+
+
+
+`
+
+
+
+
+
+
+
